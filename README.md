@@ -1,2 +1,2 @@
-# team-surg
-Starter code for HMR-Surg projects
+# emp-surg
+Empirical extensions of team-surg
