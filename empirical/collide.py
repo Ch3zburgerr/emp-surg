@@ -110,7 +110,46 @@ def execute_collision_detection(dataset, start_frame, end_frame, step, radius, v
     time_slice = preprocess(time_slice)  
     collision_events, total_collisions = detect_collisions(time_slice, radius, v_thres)
     return collision_events, total_collisions
-
+def calculate_chest_facing_direction(pelvis, left_shoulder, right_shoulder, spine2):
+    """
+    Calculate the facing direction of the chest based on the positions of the pelvis, middle spine, and shoulders.
+    Args:
+        pelvis (array): 3D coordinates of the pelvis.
+        left_shoulder (array): 3D coordinates of the left shoulder.
+        right_shoulder (array): 3D coordinates of the right shoulder.
+        spine2 (array): 3D coordinates of the middle spine joint.
+    Returns:
+        array: A unit vector representing the facing direction of the chest.
+    """
+    # Calculate the vector between the shoulders
+    shoulder_vector = right_shoulder - left_shoulder
+    # Calculate the vector from the pelvis to the middle spine joint
+    spine_vector = spine2 - pelvis
+    facing_direction = np.cross(shoulder_vector, spine_vector)
+    # Normalize the vector to get the direction
+    facing_direction = facing_direction / np.linalg.norm(facing_direction)
+    
+    return facing_direction
+def calculate_chest_displacement(time_slice, person_tracker):
+    """
+    Calculate the displacement of the chest based on the positions of the pelvis and middle spine joint.
+    Args:
+        time_slice (list): A list of dictionaries containing joint data for each frame.
+        person_tracker (int): The index of the person to track.
+    Returns:
+        array: A unit vector representing the displacement of the chest.
+    """
+    #velocity threshould should be 0.03 axis units per frame
+    displacements = []
+    frame0 = time_slice[0]['joints3d'].cpu().numpy()
+    previousSpine = frame0[time_slice[0]['trackers'].index(person_tracker)][JOINT_NAMES.index('spine2')]
+    for i in range(1, len(time_slice)):
+        frameI = time_slice[i]['joints3d'].cpu().numpy()
+        spine2 = frameI[time_slice[i]['trackers'].index(person_tracker)][JOINT_NAMES.index('spine2')]
+        displacement = np.sqrt((previousSpine[0] - spine2[0])**2 + (previousSpine[1] - spine2[1])**2 + (previousSpine[2] - spine2[2])**2)
+        displacements.append(displacement)
+        previousSpine = spine2
+    return displacements
 # Example usage:
 def tester():
     time_start = time.time()
