@@ -138,6 +138,18 @@ def calculate_chest_displacement(time_slice, person_tracker):
         person_tracker (int): The index of the person to track.
     Returns:
         array: A unit vector representing the displacement of the chest.
+    
+
+    Notes:
+    I will use both spine2 and pelvis to check for walking, with a high velocity boundary for spine2 and
+    a moderate boundary for the pelvis in order to check for sitting.
+    
+    To check for quickly standing, turning, or crouching, I will also check in the x and z directions 
+    compared to the y direction specifically.
+
+    To cases I hope to discard to isolate walking include:
+        Bending over, Stretching, Reaching over, etc. in a chair
+        Standing up quickly from a chair, crouching, creating quick vertical movement without walking
     """
     #velocity threshould should be 0.03 axis units per frame
     displacements = []
