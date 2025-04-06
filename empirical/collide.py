@@ -130,12 +130,49 @@ def calculate_chest_facing_direction(pelvis, left_shoulder, right_shoulder, spin
     facing_direction = facing_direction / np.linalg.norm(facing_direction)
     
     return facing_direction
-def calculate_chest_displacement(time_slice, person_tracker):
+def dist3D(joint1, joint2):
+    """
+    Calculate the displacement (Euclidean distance) between two joints in 3D space.
+    Args:
+        joint1 (size 3 array): 3D coordinates of the first joint.
+        joint2 (size 3 array): 3D coordinates of the second joint.
+    Returns:
+        float: The displacement between the two joints.
+    """
+    displacement = np.sqrt((joint1[0] - joint2[0])**2 + (joint1[1] - joint2[1])**2 + (joint1[2] - joint2[2])**2)
+    return displacement
+def distXYZ(joint1, joint2, x = True, y = True, z = True):
+    """
+    Calculate the displacement (Euclidean distance) between two joints in 3D space.
+    Args:
+        joint1 (size 3 array): 3D coordinates of the first joint.
+        joint2 (size 3 array): 3D coordinates of the second joint.
+        x (bool): Whether to include x-axis displacement.
+        y (bool): Whether to include y-axis displacement.
+        z (bool): Whether to include z-axis displacement.
+    Returns:
+        float: The displacement between the two joints in the specified axes.
+    """
+    if (not x and not y and not z):
+        return -1
+    displacement = 0
+    if (x):
+        displacement += (joint1[0] - joint2[0])**2
+    if (y):
+        displacement += (joint1[1] - joint2[1])**2
+    if (z):
+        displacement += (joint1[2] - joint2[2])**2
+    return np.sqrt(displacement)
+def calculate_joint_displacement(time_slice, person_tracker, joint_name = 'spine2', x = True, y = True, z = True):
     """
     Calculate the displacement of the chest based on the positions of the pelvis and middle spine joint.
     Args:
         time_slice (list): A list of dictionaries containing joint data for each frame.
         person_tracker (int): The index of the person to track.
+        joint_name (str): The name of the joint to calculate displacement for.
+        x (bool): Whether to include x-axis displacement.
+        y (bool): Whether to include y-axis displacement.
+        z (bool): Whether to include z-axis displacement.
     Returns:
         array: A unit vector representing the displacement of the chest.
     
@@ -152,16 +189,53 @@ def calculate_chest_displacement(time_slice, person_tracker):
         Standing up quickly from a chair, crouching, creating quick vertical movement without walking
     """
     #velocity threshould should be 0.03 axis units per frame
+    if (not x and not y and not z):
+        return None
     displacements = []
+    if (person_tracker not in time_slice[0]['trackers']):  
+        print ("Person not found in time slice 1")
+        return None
+    index0 = time_slice[0]['trackers'].index(person_tracker)
     frame0 = time_slice[0]['joints3d'].cpu().numpy()
-    previousSpine = frame0[time_slice[0]['trackers'].index(person_tracker)][JOINT_NAMES.index('spine2')]
+    previousJoint = frame0[index0][JOINT_NAMES.index(joint_name)]
     for i in range(1, len(time_slice)):
         frameI = time_slice[i]['joints3d'].cpu().numpy()
-        spine2 = frameI[time_slice[i]['trackers'].index(person_tracker)][JOINT_NAMES.index('spine2')]
-        displacement = np.sqrt((previousSpine[0] - spine2[0])**2 + (previousSpine[1] - spine2[1])**2 + (previousSpine[2] - spine2[2])**2)
+        if (person_tracker not in time_slice[i]['trackers']):
+            print ("Person tracker not in time slice " + str(i + 1))
+            return displacements
+        indexI = time_slice[i]['trackers'].index(person_tracker)
+        currentJoint = frameI[indexI][JOINT_NAMES.index(joint_name)]
+        displacement = distXYZ(previousJoint, currentJoint, x, y, z)
+
+        #print (displacement, previousJoint, currentJoint)
+
         displacements.append(displacement)
-        previousSpine = spine2
+        previousJoint = currentJoint
     return displacements
+def calculate_walking_frames(time_slice, person_tracker, velocity_threshold = 0.05):
+    """
+    Calculate the frames where the person is walking based on the displacement of the chest.
+    Args:
+        time_slice (list): A list of dictionaries containing joint data for each frame.
+        person_tracker (int): The index of the person to track.
+        velocity_threshold (float): The threshold for considering a frame as walking.
+        joint_name (str): The name of the joint to calculate displacement for.
+        x (bool): Whether to include x-axis displacement.
+        y (bool): Whether to include y-axis displacement.
+        z (bool): Whether to include z-axis displacement.
+
+    Returns:
+        list: A list of indices representing the frames where the person is walking.
+    """
+    displacementsSpine = calculate_joint_displacement(time_slice, person_tracker, 'spine2', x = True, y = True, z = False)
+    #print (*displacements, sep = "\n")
+    displacementsPelvis = calculate_joint_displacement(time_slice, person_tracker, 'pelvis', x = True, y = True, z = False)
+    if (displacementsSpine == None):
+        return None
+    if (displacementsPelvis == None):
+        return None
+    walking_frames = [i for i in range(len(displacementsSpine)) if (displacementsSpine[i] + 2 * displacementsPelvis[i]) / 3 > velocity_threshold]
+    return walking_frames
 # Example usage:
 def tester():
     time_start = time.time()
