@@ -212,7 +212,7 @@ def calculate_joint_displacement(time_slice, person_tracker, joint_name = 'spine
         displacements.append(displacement)
         previousJoint = currentJoint
     return displacements
-def calculate_walking_frames(time_slice, person_tracker, velocity_threshold = 0.05):
+def calculate_walking_frames(time_slice, person_tracker, velocity_threshold_spine = 0.05, velocity_threshold_pelvis):
     """
     Calculate the frames where the person is walking based on the displacement of the chest.
     Args:
@@ -234,7 +234,7 @@ def calculate_walking_frames(time_slice, person_tracker, velocity_threshold = 0.
         return None
     if (displacementsPelvis == None):
         return None
-    walking_frames = [i for i in range(len(displacementsSpine)) if (displacementsSpine[i] + 2 * displacementsPelvis[i]) / 3 > velocity_threshold]
+    walking_frames = [i for i in range(len(displacementsSpine)) if (displacementsSpine[i] > velocity_threshold_spine and displacementsPelvis[i] > velocity_threshold)]
     return walking_frames
 # Example usage:
 def tester():
