@@ -1,6 +1,7 @@
 Group Walk Results: 
 The Results are in this format: Each frame is either a -1 if that person did not appear in the frevious frame, 
 a 0 if they are not walking, and a decimal representing velocity followed by a 3d vector showing direction
+The order of numbers of each frame matches with the order of the trackers in each frame.
 Frame 1: -1, -1
 Frame 2: 0, 0
 Frame 3: 0, 0
