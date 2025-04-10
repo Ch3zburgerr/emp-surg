@@ -46,13 +46,13 @@ def calculate_walking_directions(time_slice, start, end, full = False):
             # Calculate the chest facing direction
             current_facing_direction = calculate_chest_facing_direction(pelvis, left_shoulder, right_shoulder, spine2)
             
-            if (prev_facing_direction.get(tracker) == None):
+            if (tracker not in prev_facing_direction):
                 prev_facing_direction[tracker] = current_facing_direction
-                walking_directions[i].append(-1)
+                walking_directions[i].append([-1])
                 #even if there is no previous frame/tracker/anything, we still append -1 so that the trackers work in indexing
                 continue
             # Store the facing direction in the time slice
-            walking_directions[i].append((current_facing_direction + prev_facing_direction[tracker]) / 2, tracker)
+            walking_directions[i].append((current_facing_direction + prev_facing_direction[tracker]) / 2)
             prev_facing_direction[tracker] = current_facing_direction
         keys = list(prev_facing_direction.keys())
         for key in keys:
@@ -125,8 +125,21 @@ def main():
         f.truncate(0)
         f.write("Group Walk Results: \n")
         group_walks = group_walk(time_slice, 0, len(time_slice), full = True)
+        trajectories = calculate_walking_directions(time_slice, 0, len(time_slice), full = True)
         for i in range(len(group_walks)):
-            f.write("Frame " + str(i + 1) + ": " + str(group_walks[i]) + "\n")
+            f.write("Frame " + str(i + 1) + ": ")
+            ind = 0
+            upTo = len(group_walks[i]) - 1
+            for veloc in group_walks[i]:
+                f.write(str(veloc))
+                if (veloc != 0 and trajectories[i][ind][0] != -1):
+                    f.write(' (' + str(trajectories[i][ind][0]) + ' ' + str(trajectories[i][ind][1]) + ' ' + str(trajectories[i][ind][2]) + ')')
+                if (ind != upTo):
+                    f.write(", ")
+                ind += 1
+            f.write("\n")
+            
+        f.close()
     else:
         print ("Folder does not exist")
 if __name__ ==  "__main__":
