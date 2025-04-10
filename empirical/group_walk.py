@@ -1,6 +1,8 @@
 import os
 from util import get_time_slice, preprocess
 import numpy as np
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 from joints import JOINT_NAMES
 
 PELVIS_INDEX = JOINT_NAMES.index('pelvis')
@@ -124,6 +126,9 @@ def main():
         f = open("group_walk_results.txt", "w")
         f.truncate(0)
         f.write("Group Walk Results: \n")
+        f.write("The Results are in this format: Each frame is either a -1 if that person did not appear in the frevious frame, \n")
+        f.write("a 0 if they are not walking, and a decimal representing velocity followed by a 3d vector showing direction\n")
+        f.write("The order of numbers of each frame matches with the order of the trackers in each frame.\n")
         group_walks = group_walk(time_slice, 0, len(time_slice), full = True)
         trajectories = calculate_walking_directions(time_slice, 0, len(time_slice), full = True)
         for i in range(len(group_walks)):
