@@ -40,7 +40,7 @@ def calculate_distance(data):
         centroid_dispersion.append(distance)
     return centroid_dispersion, centroid_drift 
 
-def pipeline_tester(folder_path="/pasteur/data/ghent_surg/full_hmr_outputs/220704_22022/joint_out"):
+def pipeline_tester(folder_path="joint_out"):
     data = process_files(folder_path, debug=True)
     centroid_dispersion, centroid_drift = calculate_distance(data)
 

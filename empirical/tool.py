@@ -1,4 +1,4 @@
-import pickle5 as pickle
+import pickle
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -132,7 +132,7 @@ def tester():
     engagement_events, total_events, event_record = detect_engagement_event(
         start_frame=start_frame,
         end_frame=end_frame,
-        dataset="/Users/jamesignacio/Downloads/HMR Test Folder 2/joint_out/",
+        dataset="joint_out/",
         wrist_threshold=wrist_threshold,
         elbow_threshold=elbow_threshold,
         event_time_threshold=event_time_threshold,
@@ -147,7 +147,7 @@ def tester():
     print("Event record:", len(event_record))
 
 def pipeline_tester():
-    dataset = "/pasteur/data/ghent_surg/full_hmr_outputs/220610_22011/joint_out/"
+    dataset = "joint_out/"
     time_slice = get_time_slice(0, 0, dataset, step=1, debug=True)
     time_slice = preprocess(time_slice)  
 

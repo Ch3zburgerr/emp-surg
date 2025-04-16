@@ -65,7 +65,7 @@ def plot_distance_change(data):
 
 def tester():
     frames = ['frame_000000.pkl', 'frame_009790.pkl']
-    time_slice = get_time_slice(frames[0], frames[1], "/content/drive/MyDrive/research/joint_out/", 10)
+    time_slice = get_time_slice(frames[0], frames[1], "joint_out/", 10)
     time_slice = preprocess(time_slice)
     data = []
     trackers = []
@@ -79,7 +79,7 @@ def tester():
     plot_distance_change(dist_diffs)
 
 def pipeline_tester(): 
-    dataset = get_time_slice(0, 0, "/pasteur/data/ghent_surg/full_hmr_outputs/220610_22011_test_5000/joint_out/", debug=True)
+    dataset = get_time_slice(0, 0, "joint_out/", debug=True)
     dataset = preprocess(dataset) 
     data = []
     trackers = []

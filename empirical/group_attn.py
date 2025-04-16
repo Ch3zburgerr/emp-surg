@@ -178,7 +178,7 @@ def tester():
     print(group_focused_time)
 
 def pipeline_tester():
-    folder_path = "/pasteur/data/ghent_surg/full_hmr_outputs/220610_22011_test_5000/joint_out/"
+    folder_path = "joint_out/"
     time_slice = get_time_slice(0, 0, folder_path, debug=True)
     time_slice = preprocess(time_slice)
     data = [] 

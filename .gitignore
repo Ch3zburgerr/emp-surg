@@ -1,0 +1,12 @@
+# Ignore directories
+**/joint_out/
+**/__pycache__/
+**/attention_switches_visualizations/
+**/elbow_bends_visualizations/
+**/facing_pairs_visualizations/
+
+# Ignore files
+# .gitignore
+attention_switches.txt
+elbow_bends.txt
+facing_pairs.txt

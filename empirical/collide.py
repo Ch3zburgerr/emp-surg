@@ -179,7 +179,7 @@ def tester():
     print(f"Total Collisions: {total_collisions}")
 
 def pipeline_tester():
-    dataset = get_time_slice(0, 0, "/pasteur/data/ghent_surg/full_hmr_outputs/220610_22011_test_5000/joint_out/", debug=True)
+    dataset = get_time_slice(0, 0, "joint_out/", debug=True)
     dataset = preprocess(dataset)
     collision_events, total_collisions, frame_collisions = detect_collisions(dataset, 0.25, 2) 
     print(len(collision_events))
