@@ -37,16 +37,14 @@ HEAD_ANGLE_CHANGE_THRESHOLD = 30  # degrees
 # SMPL joint indices used for attention detection
 HEAD_JOINT_INDICES = {
     'neck': 12,     # Base of head
-    'nose': 23,     # Forward direction
-    'left_eye': 24, # Used for head plane calculation
-    'right_eye': 25,
+    'left_eye': 56, # Left eye
+    'right_eye': 57, # Right eye
 }
 
 # Head connections for visualization
 HEAD_CONNECTIONS = [
-    ('neck', 'nose'),
-    ('nose', 'left_eye'),
-    ('nose', 'right_eye'),
+    ('neck', 'left_eye'),
+    ('neck', 'right_eye'),
     ('left_eye', 'right_eye')
 ]
 
@@ -76,12 +74,26 @@ def extract_head_orientation(frame_data: Dict) -> List[Dict[str, np.ndarray]]:
     return [{joint: person_joints[idx] for joint, idx in HEAD_JOINT_INDICES.items()}
             for person_joints in joints3d]
 
-def compute_head_direction(head_joints: Dict[str, np.ndarray]) -> np.ndarray:
-    """Calculate head forward direction using nose-neck vector and eye plane"""
-    head_vec = head_joints['nose'] - head_joints['neck']
-    eye_vec = head_joints['right_eye'] - head_joints['left_eye']
-    head_normal = np.cross(head_vec, eye_vec)
-    return head_normal / (np.linalg.norm(head_normal) + 1e-8)
+def compute_gaze_vector(joints):
+    """
+    Computes the gaze direction vector for a single person's joint data.
+
+    Returns: (origin, gaze_vector): A tuple where `origin` is the midpoint between the eyes,
+                                    and `gaze_vector` is the normalized gaze direction.
+    """
+    L = joints['left_eye']
+    R = joints['right_eye']
+    N = joints['neck']
+    mu = (L + R) / 2  # Midpoint between eyes
+    initial_gaze = mu - N
+    # Define a plane using the vector between the eyes and the initial gaze
+    eye_vector = L - R
+    plane_normal = np.cross(eye_vector, initial_gaze)
+    plane_normal = plane_normal / np.linalg.norm(plane_normal)
+    # Projection of the initial gaze onto the plane
+    corrected_gaze = initial_gaze - np.dot(initial_gaze, plane_normal) * plane_normal
+    corrected_gaze = corrected_gaze / np.linalg.norm(corrected_gaze)
+    return mu, corrected_gaze
 
 def visualize_head_switch(frame_num: int, 
                         people: List[Dict[str, np.ndarray]], 
@@ -99,17 +111,18 @@ def visualize_head_switch(frame_num: int,
                        color=SKELETON_COLOR, linewidth=1.5, alpha=0.7)
         
         ax.text(*head_joints['neck'], 'neck', color='black', fontsize=8)
-        ax.text(*head_joints['nose'], 'nose', color='black', fontsize=8)
+        ax.text(*head_joints['left_eye'], 'left_eye', color='black', fontsize=8)
+        ax.text(*head_joints['right_eye'], 'right_eye', color='black', fontsize=8)
 
     # Draw head direction arrows
     info_text = []
     for person_id, head_joints in enumerate(people):
         color = HEAD_ARROW_COLORS[person_id % len(HEAD_ARROW_COLORS)]
-        current_dir = compute_head_direction(head_joints)
+        origin, current_dir = compute_gaze_vector(head_joints)
         
         if tracker.previous_directions[person_id] is not None:
             prev_dir = tracker.previous_directions[person_id]
-            ax.quiver(*head_joints['neck'], *prev_dir, length=0.2,
+            ax.quiver(*origin, *prev_dir, length=0.2,
                      color=color, arrow_length_ratio=0.1, linestyle=':',
                      linewidth=3, alpha=ARROW_ALPHA, label=f'P{person_id} Previous')
             
@@ -117,7 +130,7 @@ def visualize_head_switch(frame_num: int,
             angle_change = np.degrees(np.arccos(np.clip(dot_product, -1.0, 1.0)))
             info_text.append(f"P{person_id}: Angle change = {angle_change:.1f}°")
         
-        ax.quiver(*head_joints['neck'], *current_dir, length=0.25,
+        ax.quiver(*origin, *current_dir, length=0.25,
                  color=color, arrow_length_ratio=0.15, linewidth=4,
                  alpha=ARROW_ALPHA, label=f'P{person_id} Current')
         
@@ -191,7 +204,7 @@ def main():
                 
             switch_in_frame = False
             for person_id, head_joints in enumerate(people):
-                head_dir = compute_head_direction(head_joints)
+                _, head_dir = compute_gaze_vector(head_joints)
                 if tracker.update(person_id, head_dir, frame_num):
                     switch_in_frame = True
             

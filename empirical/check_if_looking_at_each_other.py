@@ -13,7 +13,7 @@ START_FRAME = "frame_000000.pkl"
 END_FRAME = "frame_049640.pkl"
 BATCH_SIZE = 10
 OUTPUT_FILE = "facing_pairs.txt"
-VISUALIZATION_DIR = "facing_pairs_visualizations/"  # Changed directory name
+VISUALIZATION_DIR = "facing_pairs_visualizations/"
 os.makedirs(VISUALIZATION_DIR, exist_ok=True)
 
 # Color setup
@@ -51,11 +51,15 @@ BODY_CONNECTIONS = [
     ('spine3', 'neck'), ('neck', 'head'), ('head', 'nose'),
     ('neck', 'left_shoulder'), ('neck', 'right_shoulder'),
     ('left_shoulder', 'left_elbow'), ('right_shoulder', 'right_elbow'),
-    ('left_elbow', 'left_wrist'), ('right_elbow', 'right_wrist')
+    ('left_elbow', 'left_wrist'), ('right_elbow', 'right_wrist'),
+    # Add eye connections
+    ('left_eye', 'right_eye'),
+    ('left_eye', 'nose'),
+    ('right_eye', 'nose')
 ]
 
 ESSENTIAL_JOINTS = ['pelvis', 'left_shoulder', 'right_shoulder', 
-                   'left_hip', 'right_hip', 'neck', 'nose']
+                   'left_hip', 'right_hip', 'neck', 'left_eye', 'right_eye']
 
 # === CORE FUNCTIONS ===
 class CPU_Unpickler(pickle.Unpickler):
@@ -87,19 +91,37 @@ def extract_people_joints(frame_data: Dict) -> List[Dict[str, np.ndarray]]:
     
     people = []
     for person_joints in joints3d:
-        person_data = {joint: person_joints[SMPL_JOINT_INDICES[joint]] for joint in ESSENTIAL_JOINTS}
-        people.append(person_data)
+        person_data = {}
+        for joint in ESSENTIAL_JOINTS:
+            idx = SMPL_JOINT_INDICES[joint]
+            if idx < len(person_joints):
+                person_data[joint] = person_joints[idx]
+            else:
+                print(f"Joint {joint} (index {idx}) out of bounds")
+                break
+        else:  # Only add if all joints were found
+            people.append(person_data)
     return people
 
-def compute_body_orientation(joints: Dict[str, np.ndarray]) -> Tuple[np.ndarray, np.ndarray, float]:
-    shoulder_vec = joints['right_shoulder'] - joints['left_shoulder']
-    hip_vec = joints['right_hip'] - joints['left_hip']
-    torso_normal = np.cross(shoulder_vec, hip_vec)
-    torso_forward = torso_normal / (np.linalg.norm(torso_normal) + 1e-8)
-    head_forward = (joints['nose'] - joints['neck']) / (np.linalg.norm(joints['nose'] - joints['neck']) + 1e-8)
-    combined_forward = (torso_forward + head_forward) / (np.linalg.norm(torso_forward + head_forward) + 1e-8)
-    ht_angle = np.degrees(np.arccos(np.clip(np.dot(torso_forward, head_forward), -1.0, 1.0)))
-    return combined_forward, joints['neck'], ht_angle
+def compute_gaze_vector(joints: Dict[str, np.ndarray]) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Computes the gaze direction vector for a single person's joint data.
+    Returns: (origin, gaze_vector): A tuple where `origin` is the midpoint between the eyes,
+                                    and `gaze_vector` is the normalized gaze direction.
+    """
+    L = joints['left_eye']
+    R = joints['right_eye']
+    N = joints['neck']
+    mu = (L + R) / 2  # Midpoint between eyes
+    initial_gaze = mu - N
+    # Define a plane using the vector between the eyes and the initial gaze
+    eye_vector = L - R
+    plane_normal = np.cross(eye_vector, initial_gaze)
+    plane_normal = plane_normal / (np.linalg.norm(plane_normal) + 1e-8)
+    # Projection of the initial gaze onto the plane
+    corrected_gaze = initial_gaze - np.dot(initial_gaze, plane_normal) * plane_normal
+    corrected_gaze = corrected_gaze / (np.linalg.norm(corrected_gaze) + 1e-8)
+    return mu, corrected_gaze
 
 def calculate_mutual_angles(p1_forward: np.ndarray, p1_pos: np.ndarray, 
                            p2_forward: np.ndarray, p2_pos: np.ndarray) -> Tuple[float, float, float]:
@@ -120,28 +142,32 @@ def visualize_interaction(frame_name: str, people_joints: List[Dict[str, np.ndar
                 ax.plot(*zip(person[joint1], person[joint2]), color=SKELETON_COLOR, linewidth=2, alpha=0.7)
         
         # Label key joints
-        for joint in ['pelvis', 'neck', 'left_shoulder', 'right_shoulder', 'left_hip', 'right_hip', 'nose']:
+        for joint in ['pelvis', 'neck', 'left_shoulder', 'right_shoulder', 'left_hip', 'right_hip', 'left_eye', 'right_eye']:
             if joint in person:
                 ax.text(*person[joint], joint, color='darkgreen', fontsize=8)
 
     # Draw arrows with unique colors
     angle_info = []
     for i, person in enumerate(people_joints):
-        forward, pos, ht_angle = compute_body_orientation(person)
+        _, gaze_vector = compute_gaze_vector(person)  # Ignore mu, only use gaze_vector
+        pos = person['neck']  # Use neck position instead of eye midpoint
         color = ARROW_COLORS[i % len(ARROW_COLORS)]
         
         # Thicker arrows for facing pairs
         lw = 3 if any(i in pair for pair in facing_pairs) else 2
-        ax.quiver(*pos, *forward, length=0.3, color=color, 
+        ax.quiver(*pos, *gaze_vector, length=0.3, color=color, 
                  arrow_length_ratio=0.15, linewidth=lw, label=f'Person {i}')
         
-        angle_info.append(f"P{i}: Head-Torso={ht_angle:.1f}°")
+        angle_info.append(f"P{i}: Gaze direction")
 
     # Draw thicker connection lines for facing pairs and annotate angles
     for (i, j) in facing_pairs:
-        p1_fwd, p1_pos, _ = compute_body_orientation(people_joints[i])
-        p2_fwd, p2_pos, _ = compute_body_orientation(people_joints[j])
-        angle1, angle2, angle_between = calculate_mutual_angles(p1_fwd, p1_pos, p2_fwd, p2_pos)
+        _, p1_gaze = compute_gaze_vector(people_joints[i])
+        _, p2_gaze = compute_gaze_vector(people_joints[j])
+        p1_pos = people_joints[i]['neck']  # Use neck position
+        p2_pos = people_joints[j]['neck']  # Use neck position
+        
+        angle1, angle2, angle_between = calculate_mutual_angles(p1_gaze, p1_pos, p2_gaze, p2_pos)
         
         # Thicker purple connection line (linewidth=3)
         ax.plot(*zip(p1_pos, p2_pos), '--', color='purple', linewidth=3, alpha=0.5)
@@ -155,7 +181,7 @@ def visualize_interaction(frame_name: str, people_joints: List[Dict[str, np.ndar
         angle_info.append(f"\nFacing Pair ({i},{j}):")
         angle_info.append(f"  P{i}→P{j}: {angle1:.1f}°")
         angle_info.append(f"  P{j}→P{i}: {angle2:.1f}°")
-        angle_info.append(f"  Arrows Angle: {angle_between:.1f}°")
+        angle_info.append(f"  Gaze Angle: {angle_between:.1f}°")
 
     # Angle info box (top-left)
     ax.text2D(0.05, 0.95, "\n".join(angle_info), transform=ax.transAxes,
@@ -183,9 +209,12 @@ def process_frame(frame_path: str, output_file: str) -> bool:
     facing_pairs = []
     for i in range(len(people_joints)):
         for j in range(i+1, len(people_joints)):
-            p1_fwd, p1_pos, _ = compute_body_orientation(people_joints[i])
-            p2_fwd, p2_pos, _ = compute_body_orientation(people_joints[j])
-            angle1, angle2, _ = calculate_mutual_angles(p1_fwd, p1_pos, p2_fwd, p2_pos)
+            _, p1_gaze = compute_gaze_vector(people_joints[i])  # Ignore mu
+            _, p2_gaze = compute_gaze_vector(people_joints[j])  # Ignore mu
+            p1_pos = people_joints[i]['neck']  # Use neck position
+            p2_pos = people_joints[j]['neck']  # Use neck position
+            
+            angle1, angle2, _ = calculate_mutual_angles(p1_gaze, p1_pos, p2_gaze, p2_pos)
             
             if angle1 < 45 and angle2 < 45:
                 facing_pairs.append((i, j))
