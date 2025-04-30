@@ -58,6 +58,20 @@ def load_pickle(file_path: str) -> Optional[Dict]:
         print(f"Failed to load {os.path.basename(file_path)}: {str(e)}")
         return None
 
+def apply_transform(data, flip_yz=False):
+    """Transform joint positions by adding camera translation and optionally flipping YZ axes"""
+    # Convert numpy arrays to tensors if needed
+    vertices = torch.from_numpy(data['vertices']) if isinstance(data['vertices'], np.ndarray) else data['vertices']
+    joints3d = torch.from_numpy(data['joints3d']) if isinstance(data['joints3d'], np.ndarray) else data['joints3d']
+    pred_cam_t = torch.from_numpy(data['pred_cam_t']) if isinstance(data['pred_cam_t'], np.ndarray) else data['pred_cam_t']
+    
+    vertices = (vertices + pred_cam_t.unsqueeze(1)).detach().cpu().numpy()
+    joints = (joints3d + pred_cam_t.unsqueeze(1)).detach().cpu().numpy()
+    if flip_yz:
+        vertices = vertices[..., [0, 2, 1]]
+        joints = joints[..., [0, 2, 1]]
+    return joints, vertices
+
 def calculate_angle(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> float:
     """Calculate joint angle in degrees between vectors ba and bc"""
     ba = a - b
@@ -142,14 +156,13 @@ def process_frame(frame_data: Dict, frame_num: int) -> List[Dict]:
     if not frame_data or 'joints3d' not in frame_data:
         return []
 
+    # Apply transform to the data before processing
+    joints, _ = apply_transform(frame_data, flip_yz=True)
+    
     people_data = []
-    joints = frame_data['joints3d']
     
     for person_id, person_joints in enumerate(joints):
-        try:
-            if isinstance(person_joints, torch.Tensor):
-                person_joints = person_joints.cpu().numpy()
-                
+        try:                
             ls = person_joints[JOINT_INDICES['left_shoulder']]
             le = person_joints[JOINT_INDICES['left_elbow']]
             lw = person_joints[JOINT_INDICES['left_wrist']]

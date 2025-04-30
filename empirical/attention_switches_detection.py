@@ -63,13 +63,20 @@ def load_pickle(file_path: str) -> Optional[Dict]:
         print(f"Failed to load {os.path.basename(file_path)}: {str(e)}")
         return None
 
+def apply_transform(data, flip_yz=False):
+    vertices = (data['vertices'] + data['pred_cam_t'].unsqueeze(1)).detach().cpu().numpy()
+    joints = (data['joints3d'] + data['pred_cam_t'].unsqueeze(1)).detach().cpu().numpy()
+    if flip_yz:
+        vertices = vertices[..., [0, 2, 1]]
+        joints = joints[..., [0, 2, 1]]
+    return joints, vertices
+
 def extract_head_orientation(frame_data: Dict) -> List[Dict[str, np.ndarray]]:
     if not isinstance(frame_data, dict) or 'joints3d' not in frame_data:
         return []
     
-    joints3d = frame_data['joints3d']
-    if isinstance(joints3d, torch.Tensor):
-        joints3d = joints3d.cpu().numpy()
+    # Apply transform to the data before processing
+    joints3d, _ = apply_transform(frame_data, flip_yz=True)
     
     return [{joint: person_joints[idx] for joint, idx in HEAD_JOINT_INDICES.items()}
             for person_joints in joints3d]
