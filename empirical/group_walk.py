@@ -4,12 +4,65 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from joints import JOINT_NAMES
+from test_pipeline import find_extremes
 
 PELVIS_INDEX = JOINT_NAMES.index('pelvis')
 LEFT_SHOULDER_INDEX = JOINT_NAMES.index('left_shoulder')
 RIGHT_SHOULDER_INDEX = JOINT_NAMES.index('right_shoulder')
 SPINE2_INDEX = JOINT_NAMES.index('spine2')
+def rotation_matrix(axis, theta):
+    """
+    Compute the rotation matrix for a given axis and angle.
+    Args:
+        axis (array): A 3-element array representing the axis of rotation (must be a unit vector).
+        theta (float): Rotation angle in radians.
 
+    Returns:
+        ndarray: A 3x3 rotation matrix.
+    """
+    axis = axis / np.linalg.norm(axis)  # Ensure the axis is a unit vector
+    ux, uy, uz = axis
+    cos_theta = np.cos(theta)
+    sin_theta = np.sin(theta)
+
+    R = np.array([
+        [cos_theta + ux**2 * (1 - cos_theta),
+         ux*uy*(1 - cos_theta) - uz*sin_theta,
+         ux*uz*(1 - cos_theta) + uy*sin_theta],
+
+        [uy*ux*(1 - cos_theta) + uz*sin_theta,
+         cos_theta + uy**2 * (1 - cos_theta),
+         uy*uz*(1 - cos_theta) - ux*sin_theta],
+
+        [uz*ux*(1 - cos_theta) - uy*sin_theta,
+         uz*uy*(1 - cos_theta) + ux*sin_theta,
+         cos_theta + uz**2 * (1 - cos_theta)]
+    ])
+    return R
+def find_extremes(time_slice, use_vertices = False):
+    x_min, x_max, y_min, y_max, z_min, z_max = float('inf'), float('-inf'), float('inf'), float('-inf'), float('inf'), float('-inf')
+    for i in range(len(time_slice)):
+        joints = time_slice[i]['joints3d']
+        numPeople = len(time_slice[i]['trackers'])
+        for person in range(numPeople):
+            for joint in joints[person]:
+                x_min = min(x_min, joint[0])
+                x_max = max(x_max, joint[0])
+                y_min = min(y_min, joint[2])
+                y_max = max(y_max, joint[2])
+                z_min = min(z_min, joint[1])
+                z_max = max(z_max, joint[1])
+        if (use_vertices):
+            vertices = time_slice[i]['vertices']
+            for person in range(numPeople):
+                for vertex in vertices[person]:
+                    x_min = min(x_min, vertex[0])
+                    x_max = max(x_max, vertex[0])
+                    y_min = min(y_min, vertex[2])
+                    y_max = max(y_max, vertex[2])
+                    z_min = min(z_min, vertex[1])
+                    z_max = max(z_max, vertex[1])
+    return x_min - 1, x_max + 1, y_min, y_max, z_min, z_max
 def calculate_chest_facing_direction(pelvis, left_shoulder, right_shoulder, spine2):
     """
     calculates the direction the chest is facing
@@ -93,8 +146,8 @@ def calculate_joint_displacementsXY(time_slice, start, end, joint_name = 'spine2
                 prev_joints.pop(key)
     return joint_displacements
 def calculate_velocity(displacement_vector):
-    return np.sqrt(displacement_vector[0]**2 + displacement_vector[1]**2)
-def group_walk(time_slice, start, end, full = False, spine_threshold = 3.3, pelvis_threshold = 0.5):
+    return np.sqrt(displacement_vector[0]**2 + displacement_vector[2]**2)
+def group_walk(time_slice, start, end, full = False, threshold = True, spine_threshold = 3.3, pelvis_threshold = 0.5):
     start = max(0, start)
     end = min(len(time_slice), end)
     if (full):
@@ -114,37 +167,103 @@ def group_walk(time_slice, start, end, full = False, spine_threshold = 3.3, pelv
                 continue
             spine_velocity = calculate_velocity(spine_d)
             pelvis_velocity = calculate_velocity(pelvis_d)
-            group_walks[i].append(spine_velocity if (spine_velocity > spine_threshold and pelvis_velocity > pelvis_threshold) else 0)
-
+            if (threshold):
+                if (spine_velocity > spine_threshold and pelvis_velocity > pelvis_threshold):
+                    #print (spine_velocity, pelvis_velocity, "frame " + str(i) + " tracker " + str(time_slice[i]['trackers'][j]))
+                    group_walks[i].append(spine_velocity)
+                else:
+                    group_walks[i].append(0)
+            else:
+                group_walks[i].append(spine_velocity)
     return group_walks
-            
+def group_walk_plot(time_slice, start, end, frame_start_num, group_walks, full = False, spine_threshold = 3.3, pelvis_threshold = 0.5):
+    start = max(0, start)
+    end = min(len(time_slice), end)
+    if (full):
+        start = 0
+        end = len(time_slice)
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    x_min, x_max, y_min, y_max, z_min, z_max = find_extremes(time_slice)
+    for i in range(start, end):
+        numPeople = len(time_slice[i]['trackers'])
+        joints = time_slice[i]['joints3d']
+        vertices = time_slice[i]['vertices']
+        tracker = time_slice[i]['trackers']
+        rotation_matrix180 = np.array([[-1,0,0],[0,-1,0], [0,0,-1]])
+        xz_matrix = rotation_matrix(np.array([0,1,0]), np.radians(10))
+        yz_matrix = rotation_matrix(np.array([1,0,0]), np.radians(-75))
+        matrix_final = np.dot(rotation_matrix180, xz_matrix)
+        matrix_final = np.dot(matrix_final, yz_matrix)
+        personNjoints3d = [np.dot(joints[index], matrix_final) for index in range(numPeople)]
+        personNvertices = [np.dot(vertices[index], matrix_final) for index in range(len(vertices))]
+        xJoints = np.array(personNjoints3d)[:, :, 0]
+        yJoints = np.array(personNjoints3d)[:, :, 1]
+        zJoints = np.array(personNjoints3d)[:, :, 2]
+        xVertices = [personNvertices[index][:,0] for index in range(0, len(personNvertices))]
+        yVertices = [personNvertices[index][:,1] for index in range(0, len(personNvertices))]
+        zVertices = [personNvertices[index][:,2] for index in range(0, len(personNvertices))]
+        xVertices = np.array([xVertices[i][::17] for i in range(len(xVertices))])
+        yVertices = np.array([yVertices[i][::17] for i in range(len(yVertices))])
+        zVertices = np.array([zVertices[i][::17] for i in range(len(zVertices))])
+        ax.set_xlim([x_min, x_max])
+        ax.set_ylim([y_min, y_max])
+        ax.set_zlim([z_min, z_max])
+        for person in range(numPeople):
+            ax.scatter(xJoints[person], yJoints[person], zJoints[person])
+            ax.scatter(xVertices[person], yVertices[person], zVertices[person])
+            spine2 = personNjoints3d[person][SPINE2_INDEX]
+            pelvis = personNjoints3d[person][PELVIS_INDEX]
+            left_shoulder = personNjoints3d[person][LEFT_SHOULDER_INDEX]
+            right_shoulder = personNjoints3d[person][RIGHT_SHOULDER_INDEX]
+            # Calculate the chest facing direction
+            current_facing_direction = calculate_chest_facing_direction(pelvis, left_shoulder, right_shoulder, spine2)
+            ax.quiver(spine2[0], spine2[1], spine2[2], current_facing_direction[0], current_facing_direction[1], current_facing_direction[2], color='b', length=0.5, normalize=True, label = 'Facing Direction ' + str(tracker[person]))
+            if (group_walks[i][person] == -1 or group_walks[i][person] == 0):
+                fig.text(0, 0.20 - person * 0.05, "Tracker " + str(tracker[person]) + " is not walking")
+            else:
+                fig.text(0, 0.20 - person * 0.05, "Tracker " + str(tracker[person]) + ": " + str(group_walks[i][person]))
+        #ax.quiver(spine2[0], spine2[1], spine2[2], current_facing_direction[0], current_facing_direction[1], current_facing_direction[2], color='r', length=0.5, normalize=True, label = 'Facing Direction')
+        ax.view_init(elev = 20, azim = 45)
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('Z')
+        ax.legend()
+        frame_start_num += 1
+        plt.title('Frame ' + str(frame_start_num))
+        plt.savefig('frame_' + str(frame_start_num) + '.png')
+        plt.cla()
+        fig.texts.clear()
 def main():
     folder_link = "D:\\Coding\\data\\joint_out"
     if (os.path.exists(folder_link)):
-        time_slice = get_time_slice("frame_000000.pkl", "frame_000100.pkl", folder_link, step=1, full=True, debug=False)        
+        isFull = False
+        time_slice = get_time_slice("frame_000000.pkl", "frame_002000.pkl", folder_link, step=1, full=isFull, debug=False)        
         time_slice = preprocess(time_slice)
-        f = open("group_walk_results.txt", "w")
-        f.truncate(0)
-        f.write("Group Walk Results: \n")
-        f.write("The Results are in this format: Each frame is either a -1 if that person did not appear in the frevious frame, \n")
-        f.write("a 0 if they are not walking, and a decimal representing velocity followed by a 3d vector showing direction\n")
-        f.write("The order of numbers of each frame matches with the order of the trackers in each frame.\n")
-        group_walks = group_walk(time_slice, 0, len(time_slice), full = True)
-        trajectories = calculate_walking_directions(time_slice, 0, len(time_slice), full = True)
-        for i in range(len(group_walks)):
-            f.write("Frame " + str(i + 1) + ": ")
-            ind = 0
-            upTo = len(group_walks[i]) - 1
-            for veloc in group_walks[i]:
-                f.write(str(veloc))
-                if (veloc != 0 and trajectories[i][ind][0] != -1):
-                    f.write(' (' + str(trajectories[i][ind][0]) + ' ' + str(trajectories[i][ind][1]) + ' ' + str(trajectories[i][ind][2]) + ')')
-                if (ind != upTo):
-                    f.write(", ")
-                ind += 1
-            f.write("\n")
+        #f = open("group_walk_results.txt", "w")
+        #f.truncate(0)
+        #f.write("Group Walk Results: \n")
+        #f.write("The Results are in this format: Each frame is either a -1 if that person did not appear in the frevious frame, \n")
+        #f.write("a 0 if they are not walking, and a decimal representing velocity followed by a 3d vector showing direction\n")
+        #f.write("The order of numbers of each frame matches with the order of the trackers in each frame.\n")
+        group_walks = group_walk(time_slice, 0, len(time_slice), threshold = True, full = isFull)
+        #print (*group_walks, sep = "\n")
+        #trajectories = calculate_walking_directions(time_slice, 0, len(time_slice), full = isFull)
+        group_walk_plot(time_slice, 0, len(time_slice), 1, group_walks, full = isFull)
+        #for i in range(len(group_walks)):
+        #    f.write("Frame " + str(i + 1) + ": ")
+        #    ind = 0
+        #    upTo = len(group_walks[i]) - 1
+        #    for veloc in group_walks[i]:
+        #        f.write(str(veloc))
+        #        if (veloc != 0 and trajectories[i][ind][0] != -1):
+        #            f.write(' (' + str(trajectories[i][ind][0]) + ' ' + str(trajectories[i][ind][1]) + ' ' + str(trajectories[i][ind][2]) + ')')
+        #        if (ind != upTo):
+        #            f.write(", ")
+        #        ind += 1
+        #    f.write("\n")
             
-        f.close()
+        #f.close()
     else:
         print ("Folder does not exist")
 if __name__ ==  "__main__":
