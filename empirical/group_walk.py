@@ -138,7 +138,7 @@ def calculate_joint_displacementsXY(time_slice, start, end, joint_name = 'spine2
                 prev_joints[tracker] = joint
                 joint_displacements[i].append([-1])
                 continue
-            joint_displacements[i].append((joint + prev_joints[tracker]) / 2)
+            joint_displacements[i].append(prev_joints[tracker] - joint)
             prev_joints[tracker] = joint
         keys = list(prev_joints.keys())  
         for key in keys:
@@ -146,8 +146,15 @@ def calculate_joint_displacementsXY(time_slice, start, end, joint_name = 'spine2
                 prev_joints.pop(key)
     return joint_displacements
 def calculate_velocity(displacement_vector):
-    return np.sqrt(displacement_vector[0]**2 + displacement_vector[2]**2)
-def group_walk(time_slice, start, end, full = False, threshold = True, spine_threshold = 3.3, pelvis_threshold = 0.5):
+    return np.sqrt(displacement_vector[0]**2 + displacement_vector[1]**2)
+def group_walk(time_slice, start, end, full = False, threshold = True, spine_threshold = 0.26, pelvis_threshold = 0.2):
+    f = open("group_walk_other_stuff.txt", "w")
+    f.truncate(0)
+    f.write("Group Walk Results: \n")
+    f.write("The Results are in this format: Each frame is either a -1 if that person did not appear in the frevious frame, \n")
+    f.write("a 0 if they are not walking, and a decimal representing velocity followed by a 3d vector showing direction\n")
+    f.write("The order of numbers of each frame matches with the order of the trackers in each frame.\n")
+       
     start = max(0, start)
     end = min(len(time_slice), end)
     if (full):
@@ -156,27 +163,31 @@ def group_walk(time_slice, start, end, full = False, threshold = True, spine_thr
     group_walks = [[] for _ in range(len(time_slice))]
     pelvis_displacements = calculate_joint_displacementsXY(time_slice, start, end, joint_name = 'pelvis', full = full)
     spine_displacements = calculate_joint_displacementsXY(time_slice, start, end, joint_name = 'spine2', full = full)
+
     #walking_directions = calculate_walking_directions(time_slice, start, end, full = full)
     for i in range(start, end):
         num_people = len(time_slice[i]['trackers'])
+        f.write("Frame " + str(i + 1) + ": \n")
         for j in range(num_people):
             spine_d = spine_displacements[i][j]
             pelvis_d = pelvis_displacements[i][j]
             if (spine_d[0] == -1 or pelvis_d[0] == -1):
+                f.write("-1 ")
                 group_walks[i].append(-1)
                 continue
             spine_velocity = calculate_velocity(spine_d)
             pelvis_velocity = calculate_velocity(pelvis_d)
+            f.write(str(spine_velocity) + " " + str(pelvis_velocity) + "\n")
             if (threshold):
                 if (spine_velocity > spine_threshold and pelvis_velocity > pelvis_threshold):
-                    #print (spine_velocity, pelvis_velocity, "frame " + str(i) + " tracker " + str(time_slice[i]['trackers'][j]))
                     group_walks[i].append(spine_velocity)
                 else:
                     group_walks[i].append(0)
             else:
                 group_walks[i].append(spine_velocity)
+        f.write("\n")
     return group_walks
-def group_walk_plot(time_slice, start, end, frame_start_num, group_walks, full = False, spine_threshold = 3.3, pelvis_threshold = 0.5):
+def group_walk_plot(time_slice, start, end, frame_start_num, group_walks, full = False): 
     start = max(0, start)
     end = min(len(time_slice), end)
     if (full):
